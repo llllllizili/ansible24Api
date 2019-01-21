@@ -18,46 +18,46 @@ from ansible.inventory.host import Host #操作单个主机
 from ansible.inventory.group import Group #操作单个主机组
 
 
-class MyInventory(InventoryManager):  
-    """ 
-    this is my ansible inventory object. 
-    """  
+class MyInventory(InventoryManager):
+    """
+    this is my ansible inventory object.
+    """
     def __init__(self, resource, loader, sources=None):
         self.resource = resource
         self.inventory = InventoryManager(loader=loader, sources=sources)
         self.gen_inventory()
-  
+
     def my_add_group(self, hosts, groupname, groupvars=None):
 
         self.inventory.add_group(groupname)
 
-        # if group variables exists, add them to group  
+        # if group variables exists, add them to group
         if groupvars:
             my_group = self.inventory.groups().get(groupname, None)
             if my_group is None:
                 return 'my group is none'
 
-            for key, value in groupvars.iteritems():
+            for key, value in groupvars.items():
                 my_group.set_variable(key, value)
 
-        # add hosts to group  
+        # add hosts to group
         for host in hosts:
-            # set connection variables 
-            if not host.has_key("hostname"):
+            # set connection variables
+            if 'hostname' not in host:
                 continue
 
             hostname = host.get("hostname")
             self.inventory.add_host(host=hostname, group=groupname)
 
             my_host = self.inventory.get_host(hostname)
-            # set other variables  
-            for key, value in host.iteritems():
+            # set other variables
+            for key, value in host.items():
                 if key not in ["hostname"]:
                     my_host.set_variable(key, value)
 
     def gen_inventory(self):
-        """ 
-        add hosts to inventory. 
+        """
+        add hosts to inventory.
         """
         if self.resource is None:
             pass
@@ -65,7 +65,7 @@ class MyInventory(InventoryManager):
             #self.my_add_group(self.resource, 'default_group')
             self.my_add_group(self.resource, 'all')
         elif isinstance(self.resource, dict):
-            for groupname, hosts_and_vars in self.resource.iteritems():
+            for groupname, hosts_and_vars in self.resource.items():
                 self.my_add_group(hosts_and_vars.get("hosts"), groupname, hosts_and_vars.get("vars"))
 
 
@@ -85,41 +85,30 @@ class ResultsCollector(CallbackBase):
         self.status_unreachable = dict()
         self.status_playbook = ''
         self.status_no_hosts = False
-        self.host_ok = dict()
-        self.host_failed = dict()
-        self.host_unreachable = dict()
 
     def v2_runner_on_ok(self, result):
         # 任务成功
         host = result._host.get_name()
         self.runner_on_ok(host, result._result)
-        # self.status_ok = json.dumps({host: result._result},indent=4)
-        #if not self.status_ok.get(result.task_name):
-        #    self.status_ok[result.task_name] = list()
-        #self.status_ok[result.task_name].append({host: result._result})
-        if not self.host_ok.get(host):
-            self.host_ok[host] = list()
-        self.host_ok[host].append(result)
+        if not self.status_ok.get(host):
+            self.status_ok[host] = list()
+        self.status_ok[host].append(result)
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         # 任务失败
         host = result._host.get_name()
         self.runner_on_failed(host, result._result, ignore_errors)
-        # self.status_fail = json.dumps({host: result._result},indent=4)
-        if not self.status_fail.get(result.task_name):
-            self.status_fail[result.task_name] = list()
-        self.status_fail[result.task_name].append({host: result._result})
-        self.host_failed[host] = result
+        if not self.status_fail.get(host):
+            self.status_fail[host] = list()
+        self.status_fail[host].append(result)
 
     def v2_runner_on_unreachable(self, result):
         # 主机无法访问
         host = result._host.get_name()
         self.runner_on_unreachable(host, result._result)
-        # self.status_unreachable=json.dumps({host: result._result},indent=4)
-        if not self.status_unreachable.get(result.task_name):
-            self.status_unreachable[result.task_name] = list()
-        self.status_unreachable[result.task_name].append({host: result._result})
-        self.host_unreachable[host] = result
+        if not self.status_unreachable.get(host):
+            self.status_unreachable[host] = list()
+        self.status_unreachable[host].append(result)
 
     def v2_playbook_on_no_hosts_matched(self):
         self.playbook_on_no_hosts_matched()
@@ -184,12 +173,12 @@ class MyApi(object):
         # 默认密码, 主机未定义密码的时候才生效
         #self.passwords = dict(sshpass=None, becomepass=None)
         self.passwords = dict(vault_pass='secret')
-        
+
         # 加载 host 列表
         #self.inventory = InventoryManager(loader=self.loader, sources=[self.resource])
-        
+
         self.inventory = MyInventory(self.resource, self.loader, self.sources).inventory
-        
+
 
         # 初始化变量, 包括主机、组、扩展等变量
         self.variable_manager = VariableManager(loader=self.loader, inventory=self.inventory)
@@ -203,7 +192,7 @@ class MyApi(object):
 
         # 创建任务
         play_source = dict(
-            name="Ansible Play",
+            name="ZL Play",
             hosts=host_list,
             gather_facts='no',
             tasks=[
@@ -278,9 +267,8 @@ class MyApi(object):
     def get_result(self):
         # 获取结束回调
         self.result_all = {'success': {}, 'failed': {}, 'unreachable': {}}
-        # print dir(self.callback)
-        
-        for host, results in self.callback.host_ok.items():
+
+        for host, results in self.callback.status_ok.items():
             for result in results:
                 if not self.result_all['success'].get(host):
                     self.result_all['success'][host] = dict()
@@ -288,9 +276,9 @@ class MyApi(object):
                 _result = result._result
                 if not self.result_all['success'][host].get(task_name):
                     self.result_all['success'][host][task_name] = list()
-                self.result_all['success'][host][task_name].append(_result)
+                self.result_all['success'][host][task_name]=(_result['stdout'])
 
-        for host, result in self.callback.host_failed.items():
+        for host, results in self.callback.status_fail.items():
             for result in results:
                 if not self.result_all['failed'].get(host):
                     self.result_all['failed'][host] = dict()
@@ -298,10 +286,9 @@ class MyApi(object):
                 _result = result._result
                 if not self.result_all['failed'][host].get(task_name):
                     self.result_all['failed'][host][task_name] = list()
-                self.result_all['failed'][host][task_name].append(_result['msg'])
-            # self.result_all['failed'][host] = _result['msg']
+                self.result_all['failed'][host][task_name]=(_result['stdout'])
 
-        for host, result in self.callback.host_unreachable.items():
+        for host, results in self.callback.status_unreachable.items():
             for result in results:
                 if not self.result_all['unreachable'].get(host):
                     self.result_all['unreachable'][host] = dict()
@@ -311,15 +298,10 @@ class MyApi(object):
                     self.result_all['unreachable'][host][task_name] = list()
                 self.result_all['unreachable'][host][task_name].append(_result['msg'])
 
-        for i in self.result_all['success'].keys():
-            # print i,self.result_all['success'][i]
-            return self.result_all
-        # print self.result_all['fail']
-        # print self.result_all['unreachable']
-        # print self.result_all
+        return self.result_all
 
 
     def get_json(self):
         d = self.get_result()
-        data = json.dumps(d, ensure_ascii=False,encoding='utf-8')
+        data = json.dumps(d)
         return data

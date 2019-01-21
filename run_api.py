@@ -1,27 +1,101 @@
 # coding: utf-8
 
-from ansible_api import MyApi
-
-# # hostfile 可以是一个静态文件, 也可以是一个get_inventory文件 (最后把取到的内容print出来)
-# #dict_1 ={'my_group': {'hosts': {'host': {'ansible_ssh_host': '192.168.1.55', 'ansible_ssh_port': 22, 'ansible_ssh_pass': 'centos', 'ansible_ssh_user': 'root'}}}}
-# api = MyApi("/root/ansible/py2/api/hosts")
+import os
+from .ansible_api import MyApi as AnsibleApi
 
 
-# # 执行 Ad-hoc
-# api.run("all", "shell", "ls /tmp")
+class RemoteRun(object):
+    global script_path
+    script_path = os.path.dirname(__file__) + '/script/'
+    def __init__(self,**kwargs):
+        self.ip=kwargs.get('ip','')
+        self.username=kwargs.get('username','')
+        self.password=kwargs.get('password','')
+        self.port=kwargs.get('port',22)
+        self.os_type=kwargs.get('os_type')
+        self.time_out = kwargs.get('time_out',10)
+        self.run_user = kwargs.get('become_user','root')
+
+        if not self.os_type :
+            return 'OS TYPE 未配置'
+        if not self.ip:
+            return 'ip 未配置'
+        if self.os_type.lower() == 'linux':
+            if not self.username or not self.password:
+                return '账号,密码不完整'
+
+        self.sources=[]
+        host_info={}
+
+        host_info['hostname']=self.ip
+        host_info['ansible_user']=self.username
+        host_info['ansible_ssh_pass']=self.password
+        host_info['ansible_port']=self.port
+
+        self.sources.append(host_info)
 
 
-# # 执行 playbook
-# #api.run_playbook(<host>, <playbookfile>)
-
-# # 获取返回值
-# #res=api.get_result()    # 字典
-# res = api.get_json()      # json10
-# print res
 
 
-sources=[{"hostname": "192.168.1.100", "ansible_port":22, "ansible_user":"root", "ansible_ssh_pass":"centos"}]
-runner = MyApi(resource=sources)
-runner.run('all', 'shell', "ip addr | grep 192")
-res = runner.get_json()
-print res
+    def get_path(self):
+        return script_path
+
+    def run_cmd(self,cmd,**kwargs):
+        chdir=kwargs.get('chdir','')
+        if cmd:
+            if len(self.sources)>0:
+                ansible_run = AnsibleApi(resource=self.sources)
+                ansible_run.run(self.ip, 'shell', 'source /etc/profile;'+cmd +
+                    ' chdir='+chdir if chdir else cmd )
+                data=ansible_run.get_result()
+
+                success_data=data['success']
+                failed_data=data['failed']
+                unreachable_data=data['unreachable']
+
+                if len(failed_data) > 0:
+                    return failed_data[self.ip]['command']
+                if len(unreachable_data) >0:
+                    return unreachable_data[self.ip]['command']
+                else:
+                    return success_data[self.ip]['command']
+        else:
+            pass
+
+    def run_script(self,script,options):
+        if len(self.sources)>0:
+            ansible_run = AnsibleApi(
+                    resource=self.sources,
+                    become_user=self.run_user,
+                    timeout=self.time_out,
+                )
+            ansible_run.run(self.ip, 'script', script_path+script + ' ' + options)
+            print(script_path+script + ' ' + options)
+            data=ansible_run.get_result()
+
+            success_data=data['success']
+            failed_data=data['failed']
+            unreachable_data=data['unreachable']
+
+            if len(failed_data) > 0:
+                return failed_data
+            if len(unreachable_data) >0:
+                return unreachable_data
+            else:
+                return success_data
+        else:
+            pass
+
+    def run_copy(self):
+        pass
+
+if __name__ == '__main__':
+    run = RemoteRun(ip='192.168.1.100',username='root',password='centos',port=22,os_type='linux')
+    d = run.run_cmd('ls /opt')
+    # print(d)
+    # dd = run.run_cmd('ls /opt123')
+    # print(dd)
+
+    # rund = RemoteRun(ip='192.168.1.1131',username='root',password='centos',port=22,os_type='linux')
+    # ddd = rund.run_cmd('ls /opt123')
+    # print(ddd)
