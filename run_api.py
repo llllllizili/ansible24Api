@@ -53,12 +53,21 @@ class RemoteRun(object):
                 failed_data=data['failed']
                 unreachable_data=data['unreachable']
 
+                return_data=dict()
+
+
                 if len(failed_data) > 0:
-                    return failed_data[self.ip]['command']
+                    return_data['status']='failed'
+                    return_data['result']=failed_data[self.ip]['command']
+                    return return_data
                 if len(unreachable_data) >0:
-                    return unreachable_data[self.ip]['command']
+                    return_data['status']='unreachable'
+                    return_data['result']=unreachable_data[self.ip]['command']
+                    return return_data
                 else:
-                    return success_data[self.ip]['command']
+                    return_data['status']='success'
+                    return_data['result']=success_data[self.ip]['command']
+                    return return_data
         else:
             pass
 
@@ -70,19 +79,27 @@ class RemoteRun(object):
                     timeout=self.time_out,
                 )
             ansible_run.run(self.ip, 'script', script_path+script + ' ' + options)
-            print(script_path+script + ' ' + options)
             data=ansible_run.get_result()
 
             success_data=data['success']
             failed_data=data['failed']
             unreachable_data=data['unreachable']
 
+            return_data=dict()
+
             if len(failed_data) > 0:
-                return failed_data
+                return_data['status']='failed'
+                return_data['result']=failed_data[self.ip]['script']
+                return return_data
             if len(unreachable_data) >0:
-                return unreachable_data
+
+                return_data['status']='unreachable'
+                return_data['result']=unreachable_data[self.ip]['script']
+                return return_data
             else:
-                return success_data
+                return_data['status']='success'
+                return_data['result']=success_data[self.ip]['script']
+                return return_data
         else:
             pass
 
