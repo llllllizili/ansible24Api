@@ -1,5 +1,13 @@
+#!/usr/bin python
 # -*- coding: utf-8 -*-
-# Author: zili
+'''
+@File    :   ansible_api.py
+@Time    :   2019/05/05 14:34:24
+@Author  :   Li Zili 
+@Version :   1.0
+@Contact :   cn.zili.lee@gmail.com
+'''
+
 
 import os
 import sys
@@ -17,6 +25,9 @@ from ansible.executor.playbook_executor import PlaybookExecutor #执行playbook
 from ansible.inventory.host import Host #操作单个主机
 from ansible.inventory.group import Group #操作单个主机组
 
+# log
+import logging
+jklog=logging.getLogger("jksre")
 
 class MyInventory(InventoryManager):
     """
@@ -30,39 +41,29 @@ class MyInventory(InventoryManager):
     def my_add_group(self, hosts, groupname, groupvars=None):
 
         self.inventory.add_group(groupname)
-
-        # if group variables exists, add them to group
         if groupvars:
             my_group = self.inventory.groups().get(groupname, None)
             if my_group is None:
                 return 'my group is none'
-
             for key, value in groupvars.items():
                 my_group.set_variable(key, value)
-
-        # add hosts to group
         for host in hosts:
-            # set connection variables
-            if 'hostname' not in host:
+            if 'ansible_host' not in host:
                 continue
-
-            hostname = host.get("hostname")
+            hostname = host.get("ansible_host")
             self.inventory.add_host(host=hostname, group=groupname)
-
             my_host = self.inventory.get_host(hostname)
-            # set other variables
             for key, value in host.items():
-                if key not in ["hostname"]:
+                if key not in ["ansible_host"]:
                     my_host.set_variable(key, value)
 
     def gen_inventory(self):
         """
-        add hosts to inventory.
+        添加主机到inventory
         """
         if self.resource is None:
             pass
         elif isinstance(self.resource, list):
-            #self.my_add_group(self.resource, 'default_group')
             self.my_add_group(self.resource, 'all')
         elif isinstance(self.resource, dict):
             for groupname, hosts_and_vars in self.resource.items():
@@ -118,10 +119,7 @@ class ResultsCollector(CallbackBase):
         self.playbook_on_play_start(play.name)
         self.playbook_path=play.name
 
-
 class MyApi(object):
-
-
     def __init__(self, resource=None, sources=None, *args, **kwargs):
         self.resource = resource
         self.sources = sources
@@ -133,17 +131,13 @@ class MyApi(object):
         self.callback = None
 
         self.timeout = kwargs.get('timeout','') if kwargs.get('timeout','') else 10
-        self.forks = kwargs.get('forks','') if kwargs.get('timeout','') else 10
+        self.forks = kwargs.get('forks','') if kwargs.get('forks','') else 10
         self.connection =  kwargs.get('connection','') if kwargs.get('connection','') else 'smart'
         self.become_user= kwargs.get('become_user','') if kwargs.get('become_user','') else 'root'
 
 
         self.__initializeData()
         self.results_raw = {}
-
-        # if not os.path.exists(self.resource):
-        #     print('[INFO] The [%s] inventory does not exist' % resource)
-        #     sys.exit()
 
     def __initializeData(self):
         """
@@ -159,14 +153,13 @@ class MyApi(object):
                 'become_user','ask_value_pass','verbosity','check','listhosts',
                 'listtasks','listtags','diff','syntax'])
 
-        # 定义选项
-        self.options = Options(connection='smart',module_path='/usr/share/ansible',
-            forks=100,timeout=self.timeout,remote_user='root',ask_pass=False,private_key_file=None,
-            ssh_common_args=None,ssh_extra_args=None,sftp_extra_args=None,scp_extra_args=None,
-            become=None,become_method=None,become_user=self.become_user,ask_value_pass=False,
-            verbosity=None,check=False,listhosts=False,listtasks=False,listtags=False,diff=False,
-            syntax=False
-        )
+        # 定义选项 become=u'yes', 开启beome,默认关闭
+        self.options = Options(connection=self.connection,module_path=None,forks=self.forks,timeout=self.timeout,
+            remote_user='root',ask_pass=False,private_key_file=None,ssh_common_args=None,
+            ssh_extra_args=None,sftp_extra_args=None,scp_extra_args=None,become=None,
+            become_method='sudo',become_user=self.become_user,ask_value_pass=False,verbosity=None,
+            check=False,listhosts=False,listtasks=False,listtags=False,diff=False,syntax=False)
+
         # 用来加载解析yaml文件或JSON内容, 并且支持vault的解密
         self.loader = DataLoader()
 
@@ -175,8 +168,6 @@ class MyApi(object):
         self.passwords = dict(vault_pass='secret')
 
         # 加载 host 列表
-        #self.inventory = InventoryManager(loader=self.loader, sources=[self.resource])
-
         self.inventory = MyInventory(self.resource, self.loader, self.sources).inventory
 
 
@@ -192,20 +183,10 @@ class MyApi(object):
 
         # 创建任务
         play_source = dict(
-            name="ZL Play",
+            name="JK Play",
             hosts=host_list,
             gather_facts='no',
-            tasks=[
-                dict(
-                    action=dict(
-                        module=module_name,
-                        args=module_args
-                    )
-                )
-                # dict(action=dict(module='shell', args="id"), register='shell_out'),
-                # dict(action=dict(module='debug', args=dict(msg='{{shell_out.stdout}}')), async=0, poll=15)
-            ]
-        )
+            tasks=[dict(action=dict(module=module_name,args=module_args))])
         play = Play().load(play_source, variable_manager=self.variable_manager, loader=self.loader)
 
         # 实际运行
@@ -261,7 +242,7 @@ class MyApi(object):
             executor._tqm._stdout_callback = self.callback
             executor.run()
         except Exception as e:
-            print("error:", e.message)
+            jklog.error(e)
 
 
     def get_result(self):
@@ -274,9 +255,13 @@ class MyApi(object):
                     self.result_all['success'][host] = dict()
                 task_name = result.task_name
                 _result = result._result
+                # jklog.debug(_result)
                 if not self.result_all['success'][host].get(task_name):
                     self.result_all['success'][host][task_name] = list()
-                self.result_all['success'][host][task_name]=(_result['stdout'])
+                if task_name=='copy':
+                    self.result_all['success'][host][task_name]=(_result['invocation'])
+                else:   
+                    self.result_all['success'][host][task_name]=(_result['stdout'])
 
         for host, results in self.callback.status_fail.items():
             for result in results:
@@ -284,9 +269,13 @@ class MyApi(object):
                     self.result_all['failed'][host] = dict()
                 task_name = result.task_name
                 _result = result._result
+                # jklog.debug(_result)
                 if not self.result_all['failed'][host].get(task_name):
                     self.result_all['failed'][host][task_name] = list()
-                self.result_all['failed'][host][task_name]=(_result['stdout'])
+                if task_name=='copy':
+                    self.result_all['failed'][host][task_name]=(_result['msg'])
+                else:
+                    self.result_all['failed'][host][task_name]=(_result['stdout'])
 
         for host, results in self.callback.status_unreachable.items():
             for result in results:
@@ -294,6 +283,7 @@ class MyApi(object):
                     self.result_all['unreachable'][host] = dict()
                 task_name = result.task_name
                 _result = result._result
+                # jklog.debug(_result)
                 if not self.result_all['unreachable'][host].get(task_name):
                     self.result_all['unreachable'][host][task_name] = list()
                 self.result_all['unreachable'][host][task_name].append(_result['msg'])
